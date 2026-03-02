@@ -1,0 +1,103 @@
+`timescale 1ns/1ps
+module fifo_collision_tb;
+
+    reg clk;
+    reg rst;
+    reg write_enable;
+    reg read_enable;
+    reg [3:0] data_in;
+    wire [3:0] data_out;
+    wire full;
+    wire empty;
+
+    // Instantiate FIFO
+    fifo_simple_8x4 dut (
+        .clk(clk),
+        .rst(rst),
+        .write_enable(write_enable),
+        .read_enable(read_enable),
+        .data_in(data_in),
+        .data_out(data_out),
+        .full(full),
+        .empty(empty)
+    );
+
+    // Clock: 10ns period
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("fifo_collision_tb.vcd");
+        $dumpvars(0, fifo_collision_tb);
+
+        // Initialize
+        clk = 0;
+        rst = 1;
+        write_enable = 0;
+        read_enable  = 0;
+        data_in = 0;
+
+        #10 rst = 0;
+        $display("\n=== FIFO Reset === full=%b empty=%b", full, empty);
+
+        // --------------------------------------------------
+        // 1️⃣ Write some initial data to fill first half
+        // --------------------------------------------------
+        $display("\n=== Initial Writes to Fill First Half ===");
+        for (int i=0; i<4; i=i+1) begin
+            @(posedge clk);
+            write_enable = 1;
+            data_in = i+1;
+            $display("Time=%0t | WRITE data=%0d | wr_ptr=%0d | full=%b empty=%b",
+                     $time, data_in, dut.wr_ptr, full, empty);
+        end
+        @(posedge clk);
+        write_enable = 0;
+
+        // --------------------------------------------------
+        // 2️⃣ Set read pointer to 0 (first location)
+        // --------------------------------------------------
+        $display("\n=== Setting Read Pointer at First Location ===");
+        dut.rd_ptr = 0;  // force read pointer
+        $display("rd_ptr forced to %0d", dut.rd_ptr);
+
+        // --------------------------------------------------
+        // 3️⃣ Write pointer in middle (location 2)
+        // --------------------------------------------------
+        dut.wr_ptr = 2;
+        $display("wr_ptr forced to %0d", dut.wr_ptr);
+
+        // --------------------------------------------------
+        // 4️⃣ Perform simultaneous read & write at overlapping locations
+        // --------------------------------------------------
+        $display("\n=== Simultaneous Read & Write Test ===");
+        for (int i=0; i<4; i=i+1) begin
+            @(posedge clk);
+            write_enable = 1;
+            read_enable  = 1;
+            data_in = 10 + i;
+            $display("Time=%0t | WRITE data=%0d | READ data=%0d | wr_ptr=%0d rd_ptr=%0d | full=%b empty=%b",
+                     $time, data_in, data_out, dut.wr_ptr, dut.rd_ptr, full, empty);
+        end
+
+        @(posedge clk);
+        write_enable = 0;
+        read_enable  = 0;
+
+        // --------------------------------------------------
+        // 5️⃣ Continue Reading Remaining Data
+        // --------------------------------------------------
+        $display("\n=== Continue Reading Remaining Data ===");
+        for (int i=0; i<4; i=i+1) begin
+            @(posedge clk);
+            read_enable = 1;
+            $display("Time=%0t | READ data=%0d | wr_ptr=%0d rd_ptr=%0d | full=%b empty=%b",
+                     $time, data_out, dut.wr_ptr, dut.rd_ptr, full, empty);
+        end
+        @(posedge clk);
+        read_enable = 0;
+
+        $display("\n=== Simulation Complete ===");
+        #20;
+        $finish;
+    end
+endmodule
